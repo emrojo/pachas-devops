@@ -44,6 +44,14 @@ Follow the interactive prompts (select `GitHub.com` -> `HTTPS` -> authenticate w
 
 This repository includes helper scripts for Windows (PowerShell & Batch) and Linux/macOS (Bash).
 
+> [!TIP]
+> **Loading SSH Keys from a File Path (`SSH_KEY_PATH`)**:
+> Instead of pasting delicate, multi-line private keys directly into your `.env`, define a file path:
+> ```env
+> SSH_KEY_PATH=~/.ssh/id_ed25519
+> ```
+> The script will automatically resolve `~`, read the full key file, and upload it to GitHub as the `SSH_KEY` secret with correct formatting and newlines.
+
 #### Uploading Individual Secrets:
 Converts each `KEY=VALUE` line in `.env` into a separate GitHub Secret:
 

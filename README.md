@@ -84,6 +84,7 @@ That's it! On every `push` to `main`, GitHub Actions will build the Docker image
 | `deploy_mode` | `string` | `compose` | Deployment mode: `compose` (Docker Compose), `command` (custom shell command), or `none` (build & push only). |
 | `deploy_path` | `string` | `""` | Directory on the remote server where `docker-compose.yml` or app files reside. |
 | `compose_file` | `string` | `docker-compose.yml` | Compose file name on the server. |
+| `sync_compose` | `boolean` | `true` | Whether to automatically sync `compose_file` from repository to remote server if present. |
 | `compose_services` | `string` | `""` | Specific services to restart (leave empty to restart all). |
 | `deploy_command` | `string` | `""` | Custom shell command to execute if `deploy_mode: command`. |
 | `environment` | `string` | `""` | GitHub Deployment Environment name (`production`, `staging`). |

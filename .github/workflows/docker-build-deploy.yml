@@ -56,6 +56,11 @@ on:
         required: false
         type: string
         default: 'docker-compose.yml'
+      sync_compose:
+        description: 'Whether to automatically sync the compose_file from the repository to the remote server if it exists'
+        required: false
+        type: boolean
+        default: true
       compose_services:
         description: 'Specific services to restart in docker compose (leave empty to restart all)'
         required: false
@@ -197,15 +202,32 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare environment payload
-        id: env_prep
+      - name: Checkout caller repository
+        if: ${{ inputs.sync_compose }}
+        uses: actions/checkout@v4
+
+      - name: Prepare deployment payloads
+        id: payload_prep
         shell: bash
         run: |
-          # Encode ENV_CONTENT to base64 if provided to safely transfer over SSH without quoting issues
+          # 1. Prepare compose file payload if sync_compose is enabled and file exists
+          COMPOSE_PATH="${{ inputs.compose_file }}"
+          if [ "${{ inputs.sync_compose }}" = "true" ] && [ -f "$COMPOSE_PATH" ]; then
+            echo "[+] Found compose file at $COMPOSE_PATH. Encoding payload..."
+            B64_COMPOSE=$(base64 -w 0 "$COMPOSE_PATH")
+            echo "has_compose=true" >> "$GITHUB_OUTPUT"
+            echo "compose_b64=$B64_COMPOSE" >> "$GITHUB_OUTPUT"
+          else
+            echo "[-] No local compose file found to sync (relying on server file if present)."
+            echo "has_compose=false" >> "$GITHUB_OUTPUT"
+            echo "compose_b64=" >> "$GITHUB_OUTPUT"
+          fi
+
+          # 2. Prepare ENV_CONTENT payload if provided in secrets
           if [ -n "${{ secrets.ENV_CONTENT }}" ]; then
-            B64=$(echo "${{ secrets.ENV_CONTENT }}" | base64 -w 0)
+            B64_ENV=$(echo "${{ secrets.ENV_CONTENT }}" | base64 -w 0)
             echo "has_env=true" >> "$GITHUB_OUTPUT"
-            echo "env_b64=$B64" >> "$GITHUB_OUTPUT"
+            echo "env_b64=$B64_ENV" >> "$GITHUB_OUTPUT"
           else
             echo "has_env=false" >> "$GITHUB_OUTPUT"
             echo "env_b64=" >> "$GITHUB_OUTPUT"
@@ -223,8 +245,10 @@ jobs:
           COMPOSE_FILE: ${{ inputs.compose_file }}
           COMPOSE_SERVICES: ${{ inputs.compose_services }}
           DEPLOY_COMMAND: ${{ inputs.deploy_command }}
-          HAS_ENV: ${{ steps.env_prep.outputs.has_env }}
-          ENV_B64: ${{ steps.env_prep.outputs.env_b64 }}
+          HAS_ENV: ${{ steps.payload_prep.outputs.has_env }}
+          ENV_B64: ${{ steps.payload_prep.outputs.env_b64 }}
+          HAS_COMPOSE: ${{ steps.payload_prep.outputs.has_compose }}
+          COMPOSE_B64: ${{ steps.payload_prep.outputs.compose_b64 }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
@@ -232,7 +256,7 @@ jobs:
           passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ inputs.ssh_port }}
           script_stop: true
-          envs: REGISTRY,REGISTRY_USER,REGISTRY_PASS,IMAGE_FULL,DEPLOY_PATH,DEPLOY_MODE,COMPOSE_FILE,COMPOSE_SERVICES,DEPLOY_COMMAND,HAS_ENV,ENV_B64
+          envs: REGISTRY,REGISTRY_USER,REGISTRY_PASS,IMAGE_FULL,DEPLOY_PATH,DEPLOY_MODE,COMPOSE_FILE,COMPOSE_SERVICES,DEPLOY_COMMAND,HAS_ENV,ENV_B64,HAS_COMPOSE,COMPOSE_B64
           script: |
             set -e
 
@@ -249,6 +273,12 @@ jobs:
               fi
               cd "$DEPLOY_PATH"
               echo "Working directory: $(pwd)"
+            fi
+
+            # Optionally sync compose file from repository
+            if [ "$HAS_COMPOSE" = "true" ] && [ -n "$COMPOSE_B64" ]; then
+              echo "Syncing $COMPOSE_FILE from repository into $(pwd)..."
+              echo "$COMPOSE_B64" | base64 -d > "$COMPOSE_FILE"
             fi
 
             # Optionally write .env file if provided in secrets
