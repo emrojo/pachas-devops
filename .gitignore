@@ -1,17 +1,56 @@
-# Environment files
+# ==============================================================================
+# Git Ignore Rules for Pachas DevOps
+# ==============================================================================
+
+# --- Environment & Secret Files ---
 .env
 .env.*
 !.env.example
+*.local
 
-# OS generated files
+# --- SSH Keys, Certificates & Credentials ---
+*.pem
+*.key
+*.pub
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+github_deploy_key*
+credentials.json
+*.crt
+
+# --- OS Generated Files ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+[Dd]esktop.ini
 
-# Editor directories and files
+# --- IDE & Editor Settings ---
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+*.sublime-workspace
+*.sublime-project
 
-# Temporary files and logs
+# --- Logs, Caches & Temporary Files ---
 *.log
+logs/
+temp/
+tmp/
+*.tmp
+*.bak
+*.orig
+
+# --- Archives & Compressed Files ---
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
