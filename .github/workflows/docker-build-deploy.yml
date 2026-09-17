@@ -1,0 +1,285 @@
+name: Reusable Docker Build & SSH Deploy
+
+on:
+  workflow_call:
+    inputs:
+      # --- Docker Build Configuration ---
+      registry:
+        description: 'Docker registry to push the image to (defaults to GitHub Container Registry)'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      image_name:
+        description: 'Full image name excluding registry (defaults to <owner>/<repo>)'
+        required: false
+        type: string
+        default: ''
+      dockerfile:
+        description: 'Path to the Dockerfile'
+        required: false
+        type: string
+        default: './Dockerfile'
+      context:
+        description: 'Docker build context path'
+        required: false
+        type: string
+        default: '.'
+      target:
+        description: 'Target build stage in a multi-stage Dockerfile'
+        required: false
+        type: string
+        default: ''
+      build_args:
+        description: 'List of build arguments (newline or comma separated KEY=VALUE)'
+        required: false
+        type: string
+        default: ''
+      push_image:
+        description: 'Whether to push the image to the registry'
+        required: false
+        type: boolean
+        default: true
+
+      # --- Deployment Configuration ---
+      deploy_mode:
+        description: 'Deployment strategy on the host: "compose" (docker compose pull & up), "command" (custom deploy_command), or "none" (only build & push)'
+        required: false
+        type: string
+        default: 'compose'
+      deploy_path:
+        description: 'Working directory on the remote server where docker-compose.yml or app files reside'
+        required: false
+        type: string
+        default: ''
+      compose_file:
+        description: 'Filename of the docker-compose file (used if deploy_mode is "compose")'
+        required: false
+        type: string
+        default: 'docker-compose.yml'
+      compose_services:
+        description: 'Specific services to restart in docker compose (leave empty to restart all)'
+        required: false
+        type: string
+        default: ''
+      deploy_command:
+        description: 'Custom shell commands to execute on the remote host (used if deploy_mode is "command")'
+        required: false
+        type: string
+        default: ''
+      environment:
+        description: 'GitHub deployment environment name (e.g. production, staging)'
+        required: false
+        type: string
+        default: ''
+      ssh_port:
+        description: 'SSH port on the remote host'
+        required: false
+        type: number
+        default: 22
+
+    secrets:
+      SSH_HOST:
+        description: 'Host address / IP of the remote server'
+        required: false
+      SSH_USER:
+        description: 'SSH username on the remote server'
+        required: false
+      SSH_KEY:
+        description: 'Private SSH key for authentication'
+        required: false
+      SSH_PASSPHRASE:
+        description: 'Passphrase for the private SSH key (if encrypted)'
+        required: false
+      REGISTRY_USERNAME:
+        description: 'Registry username (defaults to github.actor for GHCR)'
+        required: false
+      REGISTRY_PASSWORD:
+        description: 'Registry password or token (defaults to secrets.GITHUB_TOKEN)'
+        required: false
+      ENV_CONTENT:
+        description: 'Optional .env file content to inject into deploy_path on the server before deploying'
+        required: false
+
+    outputs:
+      image_tag:
+        description: 'Primary tag generated for the built image'
+        value: ${{ jobs.build-and-push.outputs.image_tag }}
+      image_full_name:
+        description: 'Full image name with registry and primary tag'
+        value: ${{ jobs.build-and-push.outputs.image_full_name }}
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+      image_full_name: ${{ steps.determine-image.outputs.full_name }}
+    steps:
+      - name: Checkout caller repository
+        uses: actions/checkout@v4
+
+      - name: Determine image name
+        id: determine-image
+        shell: bash
+        run: |
+          # Convert image name and registry to lowercase (required by Docker / GHCR)
+          INPUT_IMAGE="${{ inputs.image_name }}"
+          if [ -z "$INPUT_IMAGE" ]; then
+            INPUT_IMAGE="${{ github.repository }}"
+          fi
+          LOWER_IMAGE=$(echo "$INPUT_IMAGE" | tr '[:upper:]' '[:lower:]')
+          LOWER_REGISTRY=$(echo "${{ inputs.registry }}" | tr '[:upper:]' '[:lower:]')
+          
+          echo "image_base=${LOWER_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "full_name=${LOWER_REGISTRY}/${LOWER_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Registry
+        if: ${{ inputs.push_image }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          password: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.determine-image.outputs.full_name }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,format=short,prefix=sha-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          target: ${{ inputs.target != '' && inputs.target || null }}
+          build-args: ${{ inputs.build_args }}
+          push: ${{ inputs.push_image }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-ssh:
+    name: Deploy via SSH
+    needs: build-and-push
+    if: ${{ inputs.deploy_mode != 'none' && !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment != '' && inputs.environment || null }}
+    steps:
+      - name: Validate SSH inputs
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then
+            echo "::error::SSH_HOST secret is missing. Deployment cannot proceed."
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then
+            echo "::error::SSH_USER secret is missing. Deployment cannot proceed."
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_KEY }}" ]; then
+            echo "::error::SSH_KEY secret is missing. Deployment cannot proceed."
+            exit 1
+          fi
+
+      - name: Prepare environment payload
+        id: env_prep
+        shell: bash
+        run: |
+          # Encode ENV_CONTENT to base64 if provided to safely transfer over SSH without quoting issues
+          if [ -n "${{ secrets.ENV_CONTENT }}" ]; then
+            B64=$(echo "${{ secrets.ENV_CONTENT }}" | base64 -w 0)
+            echo "has_env=true" >> "$GITHUB_OUTPUT"
+            echo "env_b64=$B64" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_env=false" >> "$GITHUB_OUTPUT"
+            echo "env_b64=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Execute deployment over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          REGISTRY: ${{ inputs.registry }}
+          REGISTRY_USER: ${{ secrets.REGISTRY_USERNAME || github.actor }}
+          REGISTRY_PASS: ${{ secrets.REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}
+          IMAGE_FULL: ${{ needs.build-and-push.outputs.image_full_name }}
+          DEPLOY_PATH: ${{ inputs.deploy_path }}
+          DEPLOY_MODE: ${{ inputs.deploy_mode }}
+          COMPOSE_FILE: ${{ inputs.compose_file }}
+          COMPOSE_SERVICES: ${{ inputs.compose_services }}
+          DEPLOY_COMMAND: ${{ inputs.deploy_command }}
+          HAS_ENV: ${{ steps.env_prep.outputs.has_env }}
+          ENV_B64: ${{ steps.env_prep.outputs.env_b64 }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ inputs.ssh_port }}
+          script_stop: true
+          envs: REGISTRY,REGISTRY_USER,REGISTRY_PASS,IMAGE_FULL,DEPLOY_PATH,DEPLOY_MODE,COMPOSE_FILE,COMPOSE_SERVICES,DEPLOY_COMMAND,HAS_ENV,ENV_B64
+          script: |
+            set -e
+
+            echo "=== [1/4] Authenticating with container registry ==="
+            if [ -n "$REGISTRY_PASS" ] && [ -n "$REGISTRY_USER" ]; then
+              echo "$REGISTRY_PASS" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+            fi
+
+            echo "=== [2/4] Navigating to deployment directory ==="
+            if [ -n "$DEPLOY_PATH" ]; then
+              if [ ! -d "$DEPLOY_PATH" ]; then
+                echo "Directory $DEPLOY_PATH does not exist. Creating..."
+                mkdir -p "$DEPLOY_PATH"
+              fi
+              cd "$DEPLOY_PATH"
+              echo "Working directory: $(pwd)"
+            fi
+
+            # Optionally write .env file if provided in secrets
+            if [ "$HAS_ENV" = "true" ] && [ -n "$ENV_B64" ]; then
+              echo "Writing .env file..."
+              echo "$ENV_B64" | base64 -d > .env
+              chmod 600 .env
+            fi
+
+            echo "=== [3/4] Executing deployment strategy: $DEPLOY_MODE ==="
+            if [ "$DEPLOY_MODE" = "compose" ]; then
+              echo "Pulling latest container images defined in $COMPOSE_FILE..."
+              docker compose -f "$COMPOSE_FILE" pull $COMPOSE_SERVICES
+              
+              echo "Starting/recreating containers..."
+              docker compose -f "$COMPOSE_FILE" up -d --remove-orphans $COMPOSE_SERVICES
+
+              echo "Checking container status..."
+              docker compose -f "$COMPOSE_FILE" ps
+            elif [ "$DEPLOY_MODE" = "command" ]; then
+              if [ -z "$DEPLOY_COMMAND" ]; then
+                echo "::error::deploy_mode is set to 'command' but deploy_command is empty."
+                exit 1
+              fi
+              echo "Executing custom deployment command..."
+              eval "$DEPLOY_COMMAND"
+            else
+              echo "Unknown deploy_mode: $DEPLOY_MODE"
+              exit 1
+            fi
+
+            echo "=== [4/4] Cleaning up unused Docker images ==="
+            docker image prune -f
+            echo "=== Deployment completed successfully! ==="
