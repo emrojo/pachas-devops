@@ -42,13 +42,16 @@ Follow the interactive prompts (select `GitHub.com` -> `HTTPS` -> authenticate w
 
 ### Method 1: Using the Included Helper Scripts (Recommended)
 
-This repository includes helper scripts for Windows (PowerShell) and Linux/macOS (Bash).
+This repository includes helper scripts for Windows (PowerShell & Batch) and Linux/macOS (Bash).
 
 #### Uploading Individual Secrets:
 Converts each `KEY=VALUE` line in `.env` into a separate GitHub Secret:
 
-```powershell
-# Windows PowerShell:
+```cmd
+# Windows (Command Prompt or double-click):
+scripts\sync-secrets.bat
+
+# Windows (PowerShell):
 .\scripts\sync-secrets.ps1
 
 # Linux / macOS:
@@ -58,7 +61,10 @@ Converts each `KEY=VALUE` line in `.env` into a separate GitHub Secret:
 #### Uploading the Entire `.env` as `ENV_CONTENT` (Best for Docker Compose):
 Stores the whole `.env` file as a single secret named `ENV_CONTENT`. The reusable workflow will automatically write this file onto the server before starting `docker compose`:
 
-```powershell
+```cmd
+# Windows Batch:
+scripts\sync-secrets.bat .env Single
+
 # Windows PowerShell:
 .\scripts\sync-secrets.ps1 -Mode Single
 
