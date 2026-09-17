@@ -1,6 +1,6 @@
 # ==============================================================================
-# EJEMPLO BÁSICO: Despliegue en proyectos consumidores
-# Copia este archivo en tu proyecto en: .github/workflows/deploy.yml
+# BASIC EXAMPLE: Deployment in consumer projects
+# Copy this file to your project at: .github/workflows/deploy.yml
 # ==============================================================================
 name: CI/CD Pipeline
 
@@ -9,7 +9,7 @@ on:
     branches:
       - main
 
-# Permisos necesarios para publicar imágenes en GitHub Packages (GHCR)
+# Required permissions to publish images to GitHub Packages (GHCR)
 permissions:
   contents: read
   packages: write
@@ -17,9 +17,9 @@ permissions:
 jobs:
   deploy:
     name: Build & Deploy
-    # Sustituye 'ORGANIZACION_O_USUARIO' por el dueño del repo pachas-devops
-    uses: ORGANIZACION_O_USUARIO/pachas-devops/.github/workflows/docker-build-deploy.yml@main
+    # Replace 'YOUR_ORG_OR_USERNAME' with the owner of the pachas-devops repository
+    uses: YOUR_ORG_OR_USERNAME/pachas-devops/.github/workflows/docker-build-deploy.yml@main
     secrets: inherit
     with:
       deploy_mode: 'compose'
-      deploy_path: '/home/deploy/apps/mi-proyecto'
+      deploy_path: '/home/deploy/apps/my-project'

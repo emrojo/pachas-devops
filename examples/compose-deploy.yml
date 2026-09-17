@@ -1,6 +1,6 @@
 # ==============================================================================
-# EJEMPLO AVANZADO: Despliegue con Environments, Inyección de .env y Compose
-# Copia este archivo en tu proyecto en: .github/workflows/deploy-production.yml
+# ADVANCED EXAMPLE: Deployment with Environments, .env Injection and Compose
+# Copy this file to your project at: .github/workflows/deploy-production.yml
 # ==============================================================================
 name: Deploy to Production
 
@@ -17,20 +17,20 @@ permissions:
 jobs:
   production-deploy:
     name: Production Release
-    # Sustituye 'ORGANIZACION_O_USUARIO' por el dueño del repo pachas-devops
-    uses: ORGANIZACION_O_USUARIO/pachas-devops/.github/workflows/docker-build-deploy.yml@v1
+    # Replace 'YOUR_ORG_OR_USERNAME' with the owner of the pachas-devops repository
+    uses: YOUR_ORG_OR_USERNAME/pachas-devops/.github/workflows/docker-build-deploy.yml@v1
     with:
       environment: 'production'
       dockerfile: './docker/Dockerfile'
       context: '.'
       deploy_mode: 'compose'
-      deploy_path: '/opt/apps/mi-proyecto'
+      deploy_path: '/opt/apps/my-project'
       compose_file: 'docker-compose.prod.yml'
-      # Si solo quieres recrear el servicio 'web' sin reiniciar la base de datos:
+      # Specify service names if you only want to recreate specific services (e.g. 'web'):
       compose_services: 'web'
     secrets:
       SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
       SSH_USER: ${{ secrets.PROD_SSH_USER }}
       SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
-      # Opcional: Inyecta el contenido del .env en el servidor antes del 'docker compose up'
+      # Optional: Injects raw .env file contents onto the server before 'docker compose up'
       ENV_CONTENT: ${{ secrets.PROD_ENV_FILE }}

@@ -1,49 +1,49 @@
 # 🚀 Pachas DevOps: Reusable CI/CD Workflows
 
-Repositorio base con **workflows reutilizables (`workflow_call`)** de GitHub Actions para estandarizar la compilación de imágenes Docker y su despliegue automatizado por SSH en tu infraestructura privada.
+A central repository providing **reusable GitHub Actions workflows (`workflow_call`)** to standardize Docker image builds and automated SSH deployments across your private infrastructure.
 
 ---
 
-## 🏗️ Arquitectura del Pipeline
+## 🏗️ Pipeline Architecture
 
-El flujo implementa la arquitectura recomendada por GitHub y Docker:
+This pipeline implements the pattern recommended by GitHub and Docker:
 
 ```
-[ Proyecto Consumidor ]
+[ Consumer Project ]
         │ (git push / release tag)
         ▼
 [ GitHub Runner ]
-   ├── 1. Descarga el código del proyecto
-   ├── 2. Construye la imagen Docker con buildx y caché optimizado
-   └── 3. Publica la imagen en GitHub Container Registry (ghcr.io)
+   ├── 1. Checks out repository code
+   ├── 2. Builds Docker image using buildx with layer caching (gha)
+   └── 3. Pushes image to GitHub Container Registry (ghcr.io)
         │
-        ▼ (Conexión SSH segura con llave ed25519)
-[ Servidor de Destino ]
-   ├── 4. Accede al directorio de la app (`deploy_path`)
-   ├── 5. Ejecuta `docker compose pull` para obtener la nueva imagen
-   ├── 6. Ejecuta `docker compose up -d` para recrear los contenedores sin caída
-   └── 7. Limpia imágenes huérfanas (`docker image prune -f`)
+        ▼ (Secure SSH connection using ed25519 key)
+[ Target Server ]
+   ├── 4. Navigates to the app directory (`deploy_path`)
+   ├── 5. Runs `docker compose pull` to retrieve the latest image
+   ├── 6. Runs `docker compose up -d` for zero-downtime recreation
+   └── 7. Prunes dangling images (`docker image prune -f`)
 ```
 
 ---
 
-## ⚡ Inicio Rápido (3 Pasos)
+## ⚡ Quickstart (3 Steps)
 
-### 1. Configura los Secretos en tu Repositorio Consumidor
-En tu proyecto de GitHub ve a **Settings > Secrets and variables > Actions** y añade:
-- `SSH_HOST`: Dirección IP o dominio de tu servidor.
-- `SSH_USER`: Usuario del servidor (recomendado: `deploy`, ver [Guía de Servidor](docs/server-setup.md)).
-- `SSH_KEY`: Llave privada SSH (ed25519) sin contraseña o con `SSH_PASSPHRASE`.
+### 1. Configure Secrets in Consumer Repository
+In your GitHub project, navigate to **Settings > Secrets and variables > Actions** and add:
+- `SSH_HOST`: IP address or domain of your remote server.
+- `SSH_USER`: SSH user on the server (recommended: `deploy`, see [Server Setup Guide](docs/server-setup.md)).
+- `SSH_KEY`: Private SSH key (ed25519) without passphrase or accompanied by `SSH_PASSPHRASE`.
 
-### 2. Prepara el Servidor
-Crea el directorio y coloca tu `docker-compose.yml` en el servidor:
+### 2. Prepare the Server
+Create the target directory and place your `docker-compose.yml` on the server:
 ```bash
-mkdir -p /home/deploy/apps/mi-app
-# Puedes usar la plantilla en examples/docker-compose.example.yml
+mkdir -p /home/deploy/apps/my-app
+# You can use the template in examples/docker-compose.example.yml
 ```
 
-### 3. Agrega el Workflow a tu Proyecto
-En tu proyecto, crea `.github/workflows/deploy.yml`:
+### 3. Add Workflow to Your Project
+In your consumer project, create `.github/workflows/deploy.yml`:
 
 ```yaml
 name: Deploy Application
@@ -58,81 +58,81 @@ permissions:
 
 jobs:
   deploy:
-    # Reemplaza 'ORGANIZACION_O_USUARIO' por tu usuario/organización de GitHub
-    uses: ORGANIZACION_O_USUARIO/pachas-devops/.github/workflows/docker-build-deploy.yml@main
+    # Replace 'YOUR_ORG_OR_USERNAME' with your GitHub organization or username
+    uses: YOUR_ORG_OR_USERNAME/pachas-devops/.github/workflows/docker-build-deploy.yml@main
     secrets: inherit
     with:
       deploy_mode: 'compose'
-      deploy_path: '/home/deploy/apps/mi-app'
+      deploy_path: '/home/deploy/apps/my-app'
 ```
 
-¡Listo! Cada vez que hagas `push` a `main`, GitHub Actions compilará la imagen, la subirá a `ghcr.io` y la desplegará en tu servidor.
+That's it! On every `push` to `main`, GitHub Actions will build the Docker image, publish it to `ghcr.io`, and deploy it to your server via SSH.
 
 ---
 
-## 📋 Catálogo de Parámetros (`inputs`)
+## 📋 Input Parameters (`inputs`)
 
-| Parámetro | Tipo | Por Defecto | Descripción |
+| Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `registry` | `string` | `ghcr.io` | Registro de contenedores al que se publicará la imagen. |
-| `image_name` | `string` | `${{ github.repository }}` | Nombre de la imagen en minúsculas (sin incluir el registro). |
-| `dockerfile` | `string` | `./Dockerfile` | Ruta al Dockerfile en el proyecto llamador. |
-| `context` | `string` | `.` | Contexto de construcción de Docker. |
-| `target` | `string` | `""` | Target específico para Dockerfiles multi-stage. |
-| `build_args` | `string` | `""` | Argumentos de compilación (`KEY=VALUE`, uno por línea). |
-| `push_image` | `boolean` | `true` | Si se debe publicar la imagen en el registro. |
-| `deploy_mode` | `string` | `compose` | Modo de despliegue: `compose` (Docker Compose), `command` (script custom) o `none` (solo compilar). |
-| `deploy_path` | `string` | `""` | Ruta en el servidor donde reside el `docker-compose.yml` o app. |
-| `compose_file` | `string` | `docker-compose.yml` | Nombre del archivo compose en el servidor. |
-| `compose_services` | `string` | `""` | Servicios específicos a reiniciar (vacío reinicia todos). |
-| `deploy_command` | `string` | `""` | Comando de shell a ejecutar en el servidor si `deploy_mode: command`. |
-| `environment` | `string` | `""` | Nombre del GitHub Environment (`production`, `staging`). |
-| `ssh_port` | `number` | `22` | Puerto SSH del servidor remoto. |
+| `registry` | `string` | `ghcr.io` | Container registry to push the image to. |
+| `image_name` | `string` | `${{ github.repository }}` | Full image name in lowercase (excluding registry). |
+| `dockerfile` | `string` | `./Dockerfile` | Path to the Dockerfile in the caller project. |
+| `context` | `string` | `.` | Docker build context directory. |
+| `target` | `string` | `""` | Target build stage for multi-stage Dockerfiles. |
+| `build_args` | `string` | `""` | Build arguments (`KEY=VALUE`, one per line). |
+| `push_image` | `boolean` | `true` | Whether to push the built image to the registry. |
+| `deploy_mode` | `string` | `compose` | Deployment mode: `compose` (Docker Compose), `command` (custom shell command), or `none` (build & push only). |
+| `deploy_path` | `string` | `""` | Directory on the remote server where `docker-compose.yml` or app files reside. |
+| `compose_file` | `string` | `docker-compose.yml` | Compose file name on the server. |
+| `compose_services` | `string` | `""` | Specific services to restart (leave empty to restart all). |
+| `deploy_command` | `string` | `""` | Custom shell command to execute if `deploy_mode: command`. |
+| `environment` | `string` | `""` | GitHub Deployment Environment name (`production`, `staging`). |
+| `ssh_port` | `number` | `22` | Remote server SSH port. |
 
 ---
 
-## 🔐 Catálogo de Secretos (`secrets`)
+## 🔐 Secrets Reference (`secrets`)
 
-| Secreto | Requerido | Descripción |
+| Secret | Required | Description |
 | :--- | :---: | :--- |
-| `SSH_HOST` | Sí* | IP o dominio del servidor remoto (*si `deploy_mode != none`). |
-| `SSH_USER` | Sí* | Usuario para la sesión SSH en el servidor. |
-| `SSH_KEY` | Sí* | Llave privada SSH autorizada en el servidor. |
-| `SSH_PASSPHRASE`| No | Contraseña de descifrado de la llave SSH privada (si aplica). |
-| `REGISTRY_USERNAME`| No | Usuario del registro (por defecto: `${{ github.actor }}`). |
-| `REGISTRY_PASSWORD`| No | Token/password del registro (por defecto: `${{ secrets.GITHUB_TOKEN }}`). |
-| `ENV_CONTENT` | No | Contenido plano de variables de entorno `.env` que el workflow inyectará en el servidor antes de desplegar. |
+| `SSH_HOST` | Yes* | Remote server IP or domain (*if `deploy_mode != none`). |
+| `SSH_USER` | Yes* | SSH username on the remote server. |
+| `SSH_KEY` | Yes* | Authorized private SSH key. |
+| `SSH_PASSPHRASE`| No | Passphrase for encrypted private SSH key (if applicable). |
+| `REGISTRY_USERNAME`| No | Registry username (defaults to `${{ github.actor }}`). |
+| `REGISTRY_PASSWORD`| No | Registry token/password (defaults to `${{ secrets.GITHUB_TOKEN }}`). |
+| `ENV_CONTENT` | No | Plain text content of a `.env` file to securely inject onto the server before deployment. |
 
 > [!TIP]
-> Si en el proyecto consumidor usas `secrets: inherit`, no necesitas declarar cada secreto manualmente en la llamada al workflow; se transmitirán todos los secretos accesibles automáticamente.
+> When calling the workflow with `secrets: inherit`, you do not need to list individual secrets; all available secrets are inherited automatically.
 
 ---
 
-## 📤 Salidas (`outputs`)
+## 📤 Outputs (`outputs`)
 
-El workflow expone las siguientes variables para pasos posteriores si se necesitan:
-- `image_tag`: La etiqueta principal generada (por ejemplo `sha-1a2b3c4` o número de versión).
-- `image_full_name`: Nombre completo de la imagen con registro (por ejemplo `ghcr.io/usuario/repo`).
-
----
-
-## 📁 Ejemplos Incluidos
-
-- [Ejemplo Básico de Consumo](examples/basic-deploy.yml): El pipeline mínimo recomendado de 10 líneas.
-- [Ejemplo Avanzado con Entornos y `.env`](examples/compose-deploy.yml): Despliegue a producción con secretos inyectados y etiquetas semánticas.
-- [Plantilla de Docker Compose](examples/docker-compose.example.yml): Archivo `docker-compose.yml` listo para alojar en tu servidor.
-- [Guía de Preparación del Servidor](docs/server-setup.md): Configuración de usuario, llaves SSH y permisos en Ubuntu/Debian.
+The workflow produces the following outputs for subsequent steps or jobs:
+- `image_tag`: Primary generated tag (e.g. `sha-1a2b3c4` or release tag).
+- `image_full_name`: Full image identifier including registry and name (e.g. `ghcr.io/user/repo`).
 
 ---
 
-## 🏷️ Versionado del Workflow
+## 📁 Included Examples & Docs
 
-Recomendamos fijar las llamadas a una versión taggeada para evitar roturas por cambios futuros:
+- [Basic Deploy Example](examples/basic-deploy.yml): Minimal 15-line caller pipeline.
+- [Advanced Compose Deploy](examples/compose-deploy.yml): Production release with environments and `.env` injection.
+- [Docker Compose Template](examples/docker-compose.example.yml): Ready-to-use Compose template for your target host.
+- [Server Setup Guide](docs/server-setup.md): Complete setup guide for SSH keys, Docker user permissions, and security on Linux.
+
+---
+
+## 🏷️ Workflow Versioning
+
+Pin workflow calls to a tagged version to prevent breaking changes:
 
 ```yaml
-# Fijado a una versión mayor estable (Recomendado):
-uses: ORGANIZACION_O_USUARIO/pachas-devops/.github/workflows/docker-build-deploy.yml@v1
+# Pinned to a stable major release (Recommended):
+uses: YOUR_ORG_OR_USERNAME/pachas-devops/.github/workflows/docker-build-deploy.yml@v1
 
-# O siguiendo la rama principal con las últimas novedades:
-uses: ORGANIZACION_O_USUARIO/pachas-devops/.github/workflows/docker-build-deploy.yml@main
+# Tracking the main branch with latest updates:
+uses: YOUR_ORG_OR_USERNAME/pachas-devops/.github/workflows/docker-build-deploy.yml@main
 ```

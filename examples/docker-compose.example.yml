@@ -1,13 +1,13 @@
 # ==============================================================================
-# PLANTILLA DE DOCKER COMPOSE PARA EL SERVIDOR REMOTO
-# Coloca este archivo en el servidor en la ruta definida en `deploy_path`
-# (por ejemplo: /home/deploy/apps/mi-proyecto/docker-compose.yml)
+# DOCKER COMPOSE TEMPLATE FOR REMOTE SERVER
+# Place this file on your target server inside `deploy_path`
+# (e.g., /home/deploy/apps/my-project/docker-compose.yml)
 # ==============================================================================
 services:
   web:
-    # Sustituye con tu usuario/organización y nombre del repositorio en minúsculas
-    image: ghcr.io/tu-usuario/tu-repositorio:latest
-    container_name: mi-proyecto-web
+    # Replace with your GitHub organization/username and lowercase repository name
+    image: ghcr.io/your-user/your-repository:latest
+    container_name: my-project-web
     restart: unless-stopped
     ports:
       - "8080:80"

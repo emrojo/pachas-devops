@@ -1,101 +1,101 @@
-# Guía de Configuración del Servidor de Despliegue
+# Deployment Server Setup Guide
 
-Esta guía describe los pasos para preparar tu servidor Linux (Ubuntu/Debian) para recibir despliegues automáticos desde GitHub Actions de forma segura.
+This guide walks through configuring a Linux server (Ubuntu/Debian) to securely receive automated deployments from GitHub Actions over SSH.
 
 ---
 
-## 1. Crear Usuario de Despliegue Dedicado
+## 1. Create a Dedicated Deployment User
 
-Es una buena práctica de seguridad no usar `root` para los despliegues de CI/CD:
+Running CI/CD deployments directly as `root` is discouraged. Instead, create an unprivileged user dedicated to deployments:
 
 ```bash
-# 1. Crear el usuario 'deploy' con su carpeta de inicio
+# 1. Create the 'deploy' user with home directory
 sudo adduser --disabled-password --gecos "" deploy
 
-# 2. Agregar el usuario al grupo 'docker' para que pueda ejecutar contenedores sin sudo
+# 2. Add the user to the 'docker' group to run containers without sudo
 sudo usermod -aG docker deploy
 ```
 
 > [!NOTE]
-> Para aplicar el cambio de grupo sin reiniciar la sesión, ejecuta `newgrp docker` o reinicia la sesión SSH del usuario.
+> To apply the group membership without logging out, run `newgrp docker` or reconnect the SSH session.
 
 ---
 
-## 2. Configurar la Llave SSH para GitHub Actions
+## 2. Configure SSH Key Authentication for GitHub Actions
 
-GitHub Actions necesita una llave SSH privada para autenticarse contra el servidor.
+GitHub Actions requires a private SSH key to authenticate with the target server.
 
-### En tu máquina local (o en el servidor):
-Genera un par de llaves exclusivo para CI/CD con algoritmo ED25519 (más seguro y rápido):
+### On your local machine (or on the server):
+Generate a dedicated ED25519 key pair for CI/CD:
 
 ```bash
 ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_deploy_key
 ```
 
-Esto generará dos archivos:
-- `github_deploy_key`: **Llave privada** (la guardarás en GitHub Secrets: `SSH_KEY`).
-- `github_deploy_key.pub`: **Llave pública** (se coloca en el servidor).
+This creates two files:
+- `github_deploy_key`: **Private key** (save in GitHub Secrets as `SSH_KEY`).
+- `github_deploy_key.pub`: **Public key** (installed on the server).
 
-### En el servidor destino:
-Inicia sesión como el usuario `deploy` e instala la llave pública:
+### On the target server:
+Log in as the `deploy` user and authorize the public key:
 
 ```bash
-# Entrar como usuario deploy
+# Switch to the deploy user
 sudo su - deploy
 
-# Crear directorio .ssh con permisos restrictivos
+# Create .ssh directory with strict permissions
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 
-# Pegar el contenido de github_deploy_key.pub en authorized_keys
+# Append your public key content to authorized_keys
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5... github-actions-deploy" >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
 ---
 
-## 3. Estructura de Directorios para Aplicaciones
+## 3. Directory Layout for Applications
 
-Crea una estructura organizada para tus proyectos en el servidor:
+Organize application folders on the server:
 
 ```bash
-# Como usuario deploy:
-mkdir -p ~/apps/mi-proyecto
-cd ~/apps/mi-proyecto
+# As the deploy user:
+mkdir -p ~/apps/my-app
+cd ~/apps/my-app
 
-# Crear tu archivo docker-compose.yml (ver plantilla en examples/docker-compose.example.yml)
+# Place your docker-compose.yml here (see template in examples/docker-compose.example.yml)
 nano docker-compose.yml
 
-# (Opcional) Si manejas variables de entorno locales fijas:
+# (Optional) If you maintain persistent local environment variables:
 touch .env
 chmod 600 .env
 ```
 
 ---
 
-## 4. Acceso a Imágenes Privadas de GitHub Container Registry (`ghcr.io`)
+## 4. Accessing Private GitHub Container Registry (`ghcr.io`) Images
 
-### Si tu repositorio es PÚBLICO:
-No requieres autenticación en el servidor. `docker compose pull` descargará la imagen directamente sin credenciales.
+### For PUBLIC Repositories:
+No server authentication is needed. `docker compose pull` pulls public packages anonymously.
 
-### Si tu repositorio es PRIVADO:
-El servidor necesita permisos de lectura para descargar la imagen. Tienes dos opciones recomendadas:
+### For PRIVATE Repositories:
+The server requires read permissions to pull the image. You have two options:
 
-#### Opción A: Autenticación automática mediante el Workflow (Recomendada)
-El workflow de `pachas-devops` ejecuta automáticamente `docker login ghcr.io` durante el despliegue usando las credenciales enviadas por GitHub Actions.
+#### Option A: Automatic Authentication via Workflow (Recommended)
+The `pachas-devops` workflow automatically executes `docker login ghcr.io` during deployment using credentials supplied by GitHub Actions.
 
-#### Opción B: Inicio de sesión persistente en el servidor
-Genera un Personal Access Token (PAT) en GitHub con el scope `read:packages` y ejecuta en el servidor una única vez:
+#### Option B: Persistent Server Login
+Generate a GitHub Personal Access Token (PAT) with `read:packages` scope and run on the server once:
 
 ```bash
-echo "TU_GITHUB_PAT" | docker login ghcr.io -u TU_USUARIO_GITHUB --password-stdin
+echo "YOUR_GITHUB_PAT" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 ```
 
 ---
 
-## 5. Verificación de Seguridad del Firewall (UFW)
+## 5. Firewall Configuration (UFW)
 
-Asegúrate de permitir el puerto SSH (por defecto 22) y los puertos HTTP/HTTPS de tus aplicaciones:
+Ensure SSH (default port 22) and application traffic ports (HTTP/HTTPS) are allowed through the firewall:
 
 ```bash
 sudo ufw allow OpenSSH
