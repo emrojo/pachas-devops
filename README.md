@@ -122,6 +122,7 @@ The workflow produces the following outputs for subsequent steps or jobs:
 - [Advanced Compose Deploy](examples/compose-deploy.yml): Production release with environments and `.env` injection.
 - [Docker Compose Template](examples/docker-compose.example.yml): Ready-to-use Compose template for your target host.
 - [Server Setup Guide](docs/server-setup.md): Complete setup guide for SSH keys, Docker user permissions, and security on Linux.
+- [Secrets Management Guide](docs/secrets-management.md): Guide and scripts to sync local `.env` variables to GitHub Secrets safely.
 
 ---
 
